@@ -1,3 +1,8 @@
+1. 增加ack、unack函数
+2. 增加获取head头部信息函数
+
+-------------------------------------
+
 forked from [wingify/lua-resty-rabbitmqstomp](https://github.com/wingify/lua-resty-rabbitmqstomp)
 
 # Introduction
