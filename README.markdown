@@ -1,3 +1,5 @@
+forked from [wingify/lua-resty-rabbitmqstomp](https://github.com/wingify/lua-resty-rabbitmqstomp)
+
 # Introduction
 
 lua-resty-rabbitmqstomp - Lua RabbitMQ client library which uses cosocket api for
@@ -30,7 +32,7 @@ and required `\n` (010) over a TCP stream:
     COMMAND
     header1:value1
     header2: value2
-
+    
     BODY^@
 
 COMMAND is followed by EOL, then EOL separated header in key:value pair format
@@ -50,7 +52,7 @@ client STOMP version support and host to select the VHOST of the broker.
     passcode:guest
     host:/devnode
     heart-beat:optional
-
+    
     ^@
 
 On error, an ERROR frame is returned for example:
@@ -60,7 +62,7 @@ On error, an ERROR frame is returned for example:
     content-type:text/plain
     version:1.0,1.1,1.2
     content-length:32
-
+    
     Access refused for user 'admin'^@
 
 On successful connection, we are returned a CONNECTED frame by the broker, for
@@ -87,7 +89,7 @@ delivery mode and other header using the SEND command:
     persistent:true
     content-type:json/application
     content-length:5
-
+    
     hello^@
 
 Note that content-length includes the message and EOL byte.
@@ -203,26 +205,26 @@ some binding:
     local strlen =  string.len
     local cjson = require "cjson"
     local rabbitmq = require "resty.rabbitmqstomp"
-   
-     
+
+
     local opts = { username = "guest",
                    password = "guest",
                    vhost = "/" }
- 
+     
     local mq, err = rabbitmq:new(opts)
     
     if not mq then
           return
     end
-
+    
     mq:set_timeout(10000)
-
+    
     local ok, err = mq:connect("127.0.0.1",61613) 
     
     if not ok then
         return
     end
-
+    
     local msg = {key="value1", key2="value2"}
     local headers = {}
     headers["destination"] = "/exchange/test/binding"
@@ -230,35 +232,35 @@ some binding:
     headers["app-id"] = "luaresty"
     headers["persistent"] = "true"
     headers["content-type"] = "application/json"
-
+    
     local ok, err = mq:send(cjson.encode(msg), headers)
     if not ok then
         return
     end
     ngx.log(ngx.INFO, "Published: " .. msg)
-
+    
     local headers = {}
     headers["destination"] = "/amq/queue/queuename"
     headers["persistent"] = "true"
     headers["id"] = "123"
-
+    
     local ok, err = mq:subscribe(headers)
     if not ok then
         return
     end
-
+    
     local data, err = mq:receive()
     if not ok then
         return
     end
     ngx.log(ngx.INFO, "Consumed: " .. data)
-
+    
     local headers = {}
     headers["persistent"] = "true"
     headers["id"] = "123"
-
+    
     local ok, err = mq:unsubscribe(headers)
-
+    
     local ok, err = mq:set_keepalive(10000, 10000)
     if not ok then
         return
@@ -267,8 +269,8 @@ some binding:
 ### resty-upstream pool example
 
 	local cjson = require "cjson"
-    local rabbitmq = require "resty.rabbitmqstomp"
-    
+	local rabbitmq = require "resty.rabbitmqstomp"
+	
 	local mq, err = rabbitmq:new()
 	
 	if not mq then
@@ -282,13 +284,13 @@ some binding:
 	end
 	
 	local msg = {key="value1", key2="value2"}
-    local headers = {}
-    headers["destination"] = "/exchange/test/binding"
-    headers["receipt"] = "msg#1"
-    headers["app-id"] = "luaresty"
-    headers["persistent"] = "true"
-    headers["content-type"] = "application/json"
-    
+	local headers = {}
+	headers["destination"] = "/exchange/test/binding"
+	headers["receipt"] = "msg#1"
+	headers["app-id"] = "luaresty"
+	headers["persistent"] = "true"
+	headers["content-type"] = "application/json"
+	
 	local ok, err = mq:send(cjson.encode(msg), headers)
 		
 	if not ok then
@@ -296,8 +298,8 @@ some binding:
 	end
 	
 	ok, err = mq:set_keepalive(info.pool.keepalive_timeout,info.pool.keepalive_pool)
-	
-	
+
+
 # TODO
 
 - Write tests
