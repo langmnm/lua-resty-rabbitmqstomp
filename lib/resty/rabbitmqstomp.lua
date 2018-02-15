@@ -13,10 +13,16 @@ local pairs = pairs
 local setmetatable = setmetatable
 local sub = string.sub
 local tcp = ngx.socket.tcp
+local gmatch = ngx.re.gmatch
 
-module(...)
 
-_VERSION = "0.1"
+--- add langk 2017/12/27 17:13 module 全局定义改为 return
+local _M = {_VERSION = "0.1" }
+
+--- del langk 2017/12/27 17:14
+--module(...)
+--
+--_VERSION = "0.1"
 
 local mt = { __index = _M }
 
@@ -27,7 +33,7 @@ local STATE_CONNECTED = 1
 local STATE_COMMAND_SENT = 2
 
 
-function new(self, opts)
+function _M.new(self, opts)
     local sock, err = tcp()
     if not sock then
         return nil, err
@@ -42,7 +48,7 @@ function new(self, opts)
 end
 
 
-function set_timeout(self, timeout)
+function _M.set_timeout(self, timeout)
     local sock = self.sock
     if not sock then
         return nil, "not initialized"
@@ -52,7 +58,7 @@ function set_timeout(self, timeout)
 end
 
 
-function _build_frame(self, command, headers, body)
+local function _build_frame(self, command, headers, body)
     local frame = {command, EOL}
 
     if body then
@@ -78,7 +84,7 @@ function _build_frame(self, command, headers, body)
 end
 
 
-function _send_frame(self, frame)
+local function _send_frame(self, frame)
     local sock = self.sock
     if not sock then
         return nil, "not initialized"
@@ -87,7 +93,7 @@ function _send_frame(self, frame)
 end
 
 
-function _receive_frame(self)
+local function _receive_frame(self)
     local sock = self.sock
     if not sock then
         return nil, "not initialized"
@@ -96,14 +102,41 @@ function _receive_frame(self)
     if self.opts.trailing_lf == nil or self.opts.trailing_lf == true then
         resp = sock:receiveuntil(NULL_BYTE .. LF, {inclusive = true})
     else
-        resp = sock:receiveuntil(NULL_BYTE, {inclusive = true})
+        resp = sock:receiveuntil(NULL_BYTE, {inclusive = false})
     end
     local data, err, partial = resp()
     return data, err
 end
 
 
-function _login(self)
+-- add langk 2017/12/29 09:19 Parse the MESSAGE frame header information
+local function _get_headers(self, data)
+    local it, err = gmatch(data, [[([^\n\t\r\f:]+):(.*)\n]], "i")
+    if not it then
+        return nil, err
+    end
+
+    local headers = {}
+    while true do
+        local m, err = it()
+        if err then
+            return nil, err
+        end
+
+        if not m then
+            -- no match found (any more)
+            break
+        end
+
+        -- found a match
+        headers[m[1]] = m[2]
+    end
+
+    return headers
+end
+
+
+local function _login(self)
     
     local headers = {}
     headers["accept-version"] = "1.2"
@@ -131,7 +164,7 @@ function _login(self)
 end
 
 
-function _logout(self)
+local function _logout(self)
     local sock = self.sock
     if not sock then
 	self.state = nil
@@ -150,7 +183,7 @@ function _logout(self)
 end
 
 
-function connect(self, ...)
+function _M.connect(self, ...)
 
     local sock = self.sock
 
@@ -175,40 +208,75 @@ function connect(self, ...)
 end
 
 
-function send(self, msg, headers)
+function _M.send(self, msg, headers)
     local ok, err = _send_frame(self, _build_frame(self, "SEND", headers, msg))
     if not ok then
         return nil, err
     end
 
     if headers["receipt"] ~= nil then
-        return _receive_frame(self)
+        ok, err = _receive_frame(self)
     end
+
+    -- 接收到一条空信息后，才能set_keepalive
+    _receive_frame(self)
+
     return ok, err
 end
 
 
-function subscribe(self, headers)
+function _M.subscribe(self, headers)
     return _send_frame(self, _build_frame(self, "SUBSCRIBE", headers))
 end
 
 
-function unsubscribe(self, headers)
+function _M.unsubscribe(self, headers)
     return _send_frame(self, _build_frame(self, "UNSUBSCRIBE", headers))
 end
 
 
-function receive(self)
+function _M.receive(self)
+    local data, err = _receive_frame(self)
+    if not data then
+        return nil, err
+    end
+
+    -- \n\n 是MESSAGE中，用于分隔headers与body的分隔
+    local idx = find(data, "\n\n", 1)
+
+    return sub(data, idx + 2)
+end
+
+
+--- add langk 2017/12/28 16:15 get headers info by MESSAGE frame
+function _M.receive_frame(self)
     local data, err = _receive_frame(self)
     if not data then
         return nil, err
     end
     local idx = find(data, "\n\n", 1)
-    return sub(data, idx + 2)
+
+    local data_tbl = {}
+    data_tbl.body = sub(data, idx + 2)
+    data_tbl.headers, err = _get_headers(self, sub(data, 1, idx))
+
+    return data_tbl, err
 end
 
 
-function set_keepalive(self, ...)
+--- add langk 2017/12/28 16:13 add ack command support
+function _M.ack(self, headers)
+    return _send_frame(self, _build_frame(self, "ACK", headers))
+end
+
+
+--- add langk 2017/12/28 16:13 add nack command support
+function _M.nack(self, headers)
+    return _send_frame(self, _build_frame(self, "NACK", headers))
+end
+
+
+function _M.set_keepalive(self, ...)
     local sock = self.sock
     if not sock then
         return nil, "not initialized"
@@ -224,7 +292,7 @@ function set_keepalive(self, ...)
 end
 
 
-function get_reused_times(self)
+function _M.get_reused_times(self)
     local sock = self.sock
     if not sock then
         return nil, "not initialized"
@@ -234,16 +302,18 @@ function get_reused_times(self)
 end
 
 
-function close(self)
+function _M.close(self)
     return _logout(self)
 end
 
+--- del langk 2017/12/27 17:13
+--local class_mt = {
+--    -- to prevent use of casual module global variables
+--    __newindex = function (table, key, val)
+--      error('attempt to write to undeclared variable "' .. key .. '"')
+--    end
+--}
+--
+--setmetatable(_M, class_mt)
 
-local class_mt = {
-    -- to prevent use of casual module global variables
-    __newindex = function (table, key, val)
-      error('attempt to write to undeclared variable "' .. key .. '"')
-    end
-}
-
-setmetatable(_M, class_mt)
+return _M
